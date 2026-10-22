@@ -1,13 +1,25 @@
 /**
  * MX FAST OTP - 24/7 DUAL CLOUD AUTO FORWARDER ENGINE
- * Ultra-Stable Rate-Limited & Anti-Duplicate Edition
+ * Ultra-Stable Single-Dispatch & Anti-Spam Queue Edition
  */
 
-const https = require('https');
 const http = require('http');
 
 // ==========================================
-// ⚙️ [CONFIG & CREDENTIALS]
+// 🚀 ১. RENDER INSTANT PORT BINDING (যাতে In progress আটকে না থাকে)
+// ==========================================
+const PORT = process.env.PORT || 10000;
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('MX Fast OTP 24/7 Cloud Engine is 100% Live & Healthy!');
+});
+
+server.listen(PORT, () => {
+    console.log(`[+] Web server bound to port ${PORT} immediately. Render will show Live!`);
+});
+
+// ==========================================
+// ⚙️ ২. CONFIG & CREDENTIALS
 // ==========================================
 const CONFIG = {
     TELEGRAM_BOT_TOKEN: "8858726595:AAEGt6vzteA-ALY_y4GfBWP-sz7UJ4v0K5Q",
@@ -21,7 +33,7 @@ const CONFIG = {
     STS_URL: "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api",
     STS_TOKEN: "MSWJDU9FTB1",
 
-    // Bot & Shop Links
+    // Links
     MINI_BOT_URL: "https://t.me/MXFastOTP1_Bot/panel",
     SHOP_BOT_URL: "https://t.me/mx_premium_shop_bot",
     NUMBER_BOT_URL: "https://t.me/MXNumberOTPBot",
@@ -30,10 +42,16 @@ const CONFIG = {
     SUPPORT_URL: "https://t.me/MX_LEADER"
 };
 
-// Memory cache to prevent duplicate forwards
+// ==========================================
+// 🛡️ ৩. ANTI-DUPLICATE & MEMORY CACHE
+// ==========================================
 const sentOtpCache = new Set();
-let isFirstRun = true; // স্টার্টআপে পুরোনো কোড গ্রুপে স্প্যাম হওয়া বন্ধ করার জন্য
+let isBootstrapping = true; // প্রথমবার চালু হলে পুরোনো কোড ব্লক রাখবে
 let lastTrafficBroadcast = Date.now();
+
+// টেলিগ্রাম কিউ (একটার পর একটা মেসেজ ১.৫ সেকেন্ড গ্যাপে রিল্যাক্সে যাবে)
+const telegramQueue = [];
+let isQueueRunning = false;
 
 // Safe Symbols
 const S_BOLT    = "\u26A1";
@@ -124,19 +142,55 @@ function escapeHTML(str) {
 }
 
 // ==========================================
-// 🚀 টেলিগ্রাম মেসেজ ডেলিভারি (Instant Cache Lock)
+// 🚦 ৪. স্মার্ট কিউ ইঞ্জিন (১ মেসেজের পর ১.৫ সেকেন্ড বিরতি)
 // ==========================================
-async function sendToTelegram(item, otp, gateway) {
-    const cleanNum = (item.number || "unknown").replace(/\D/g, "");
-    const uniqueKey = `${cleanNum}_${otp}`;
+function queueOtpForTelegram(item, otp, gateway) {
+    const cleanNum = String(item.number || "unknown").replace(/\D/g, "");
+    const cleanOtp = String(otp || "").trim();
+    const uniqueKey = `${cleanNum}_${cleanOtp}`;
 
-    // ডুপ্লিকেট রোধ: সাথে সাথে ক্যাশে ঢুকিয়ে দেওয়া যাতে ২য় বার কল না হয়
-    if (sentOtpCache.has(uniqueKey)) return;
+    // ডুপ্লিকেট চেক: যদি অলরেডি পাঠানো বা ক্যাশে থাকে, সরাসরি ড্রপ!
+    if (sentOtpCache.has(uniqueKey)) {
+        return;
+    }
+    // সাথে সাথে ক্যাশে ঢুকিয়ে লক করা হলো
     sentOtpCache.add(uniqueKey);
 
-    // স্টার্টআপের সময় পুরোনো কোড টেলিগ্রামে যাবে না
-    if (isFirstRun) return;
+    // মেমোরি কন্ট্রোল (১০০০ এর বেশি জমলে পুরোনোটা ক্লিয়ার)
+    if (sentOtpCache.size > 1000) {
+        const oldestKey = sentOtpCache.values().next().value;
+        sentOtpCache.delete(oldestKey);
+    }
 
+    // প্রথম চালুর সময় পুরোনো কোড টেলিগ্রামে যাবে না
+    if (isBootstrapping) {
+        return;
+    }
+
+    // নতুন কোড কিউতে ঢুকিয়ে দেওয়া হলো
+    telegramQueue.push({ item, otp, gateway, cleanNum, uniqueKey });
+    processQueue();
+}
+
+async function processQueue() {
+    if (isQueueRunning) return;
+    isQueueRunning = true;
+
+    while (telegramQueue.length > 0) {
+        const task = telegramQueue.shift();
+        try {
+            await executeTelegramSend(task);
+        } catch (e) {
+            console.error("[-] Queue send error:", e.message);
+        }
+        // প্রতিটি মেসেজ পাঠানোর পর ঠিক ১.৫ সেকেন্ড বিরতি (টেলিগ্রাম ব্লক প্রতিরোধ)
+        await new Promise(r => setTimeout(r, 1500));
+    }
+
+    isQueueRunning = false;
+}
+
+async function executeTelegramSend({ item, otp, gateway, cleanNum, uniqueKey }) {
     const country = getCountry(item.number);
     const maskedPhone = maskPhone(item.number);
     const appName = getAppDetails(item.message);
@@ -172,25 +226,27 @@ ${S_LINE}
         ]
     ];
 
-    try {
-        await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: CONFIG.TELEGRAM_GROUP_ID,
-                text: htmlMsg,
-                parse_mode: "HTML",
-                reply_markup: { inline_keyboard: inlineKeyboard }
-            })
-        });
-        console.log(`[+] Sent to Telegram: ${maskedPhone} -> ${otp}`);
-    } catch (e) {
-        console.error("[-] Telegram Send Error:", e.message);
+    let res = await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            chat_id: CONFIG.TELEGRAM_GROUP_ID,
+            text: htmlMsg,
+            parse_mode: "HTML",
+            reply_markup: { inline_keyboard: inlineKeyboard }
+        })
+    });
+
+    let data = await res.json();
+    if (data.ok) {
+        console.log(`[+] Sent 1 clean message to Telegram: ${maskedPhone} -> ${otp}`);
+    } else {
+        console.warn(`[-] Telegram response error:`, data.description);
     }
 }
 
 // ==========================================
-// 🔄 ১ ঘণ্টার অটোমেটিক ট্র্যাফিক নোটিশ ব্রডকাস্ট
+// 🔄 ৫. ১ ঘণ্টার অটোমেটিক ট্র্যাফিক নোটিশ
 // ==========================================
 async function broadcastHourlyTraffic(topRanges) {
     let rankList = "";
@@ -238,7 +294,7 @@ ${S_LINE}
 }
 
 // ==========================================
-// ⚡ MAIN CLOUD WORKER (VOLTEX + STS)
+// ⚡ ৬. ওটিপি স্ক্যানার (Voltex + STS)
 // ==========================================
 async function checkServer(baseUrl, token, gatewayName) {
     try {
@@ -254,29 +310,8 @@ async function checkServer(baseUrl, token, gatewayName) {
 
             for (let item of otps) {
                 const otp = extractOTP(item.message);
-                if (otp) {
-                    await sendToTelegram(item, otp, gatewayName);
-                }
-            }
-        }
-    } catch (e) {}
-
-    try {
-        const cRes = await fetch(`${baseUrl}/console?t=${Date.now()}`, {
-            headers: { 'mauthapi': token }
-        });
-        if (cRes.ok) {
-            const cJson = await cRes.json();
-            let hits = [];
-            if (cJson.data && Array.isArray(cJson.data.hits)) hits = cJson.data.hits;
-            else if (cJson.data && Array.isArray(cJson.data)) hits = cJson.data;
-
-            for (let hit of hits) {
-                if (hit.number && hit.message) {
-                    const otp = extractOTP(hit.message);
-                    if (otp) {
-                        await sendToTelegram(hit, otp, gatewayName);
-                    }
+                if (otp && item.number) {
+                    queueOtpForTelegram(item, otp, gatewayName);
                 }
             }
         }
@@ -287,7 +322,7 @@ async function updateTrafficStats() {
     let countryHits = {};
     for (let server of [{ url: CONFIG.VOLTEX_URL, token: CONFIG.VOLTEX_TOKEN }, { url: CONFIG.STS_URL, token: CONFIG.STS_TOKEN }]) {
         try {
-            const res = await fetch(`${server.url}/console`, { headers: { 'mauthapi': server.token } });
+            const res = await fetch(`${server.url}/console?t=${Date.now()}`, { headers: { 'mauthapi': server.token } });
             if (res.ok) {
                 const json = await res.json();
                 const hits = json.data?.hits || [];
@@ -301,36 +336,33 @@ async function updateTrafficStats() {
 
     const sorted = Object.entries(countryHits).sort((a, b) => b[1] - a[1]);
     const now = Date.now();
-    if (now - lastTrafficBroadcast >= 3600000) {
+    if (now - lastTrafficBroadcast >= 3600000) { // ঠিক ১ ঘণ্টা পর পর
         lastTrafficBroadcast = now;
         await broadcastHourlyTraffic(sorted);
     }
 }
 
-console.log("🚀 MX FAST OTP 24/7 Cloud Server Started Successfully!");
-
-// প্রথমবার সার্ভার চালু হলে পুরোনো কোডগুলো ক্যাশে ঢুকিয়ে নেবে (যাতে ডাবল স্প্যাম না হয়)
+// ==========================================
+// 🚀 ইঞ্জিন স্টার্ট
+// ==========================================
 async function startEngine() {
+    console.log("[*] Bootstrapping existing OTPs into cache...");
+    // বুটস্ট্র্যাপ: পুরোনো সব কোড ক্যাশে নিয়ে লক করে ফেলা হলো
     await checkServer(CONFIG.VOLTEX_URL, CONFIG.VOLTEX_TOKEN, `${S_BOLT} VOLTEX`);
     await checkServer(CONFIG.STS_URL, CONFIG.STS_TOKEN, `${S_FIRE} STS`);
-    isFirstRun = false; // এরপর থেকে আসা সব কোড গ্রুপে যাবে
+    isBootstrapping = false;
+    console.log("🚀 MX FAST OTP Engine is now LIVE! Only brand new OTPs will be forwarded.");
 
-    // প্রতি ৩ সেকেন্ড পর পর চেক হবে
+    // প্রতি ৩ সেকেন্ডে প্যানেল চেক
     setInterval(async () => {
         await checkServer(CONFIG.VOLTEX_URL, CONFIG.VOLTEX_TOKEN, `${S_BOLT} VOLTEX`);
         await checkServer(CONFIG.STS_URL, CONFIG.STS_TOKEN, `${S_FIRE} STS`);
     }, 3000);
 
-    // প্রতি ১ মিনিটে ট্র্যাফিক নোটিশ কাউন্ট চেক
+    // প্রতি ১ মিনিটে ট্র্যাফিক নোটিশ টাইমার চেক
     setInterval(async () => {
         await updateTrafficStats();
     }, 60000);
 }
 
 startEngine();
-
-// ক্লাউড পোর্ট লিসেনার
-http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end('MX Fast OTP 24/7 Cloud Engine Active!');
-}).listen(process.env.PORT || 10000);
