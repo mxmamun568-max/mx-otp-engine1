@@ -1,9 +1,14 @@
 /**
- * MX FAST OTP - 24/7 DUAL CLOUD AUTO FORWARDER ENGINE
- * Live Console Stream + Smart Anti-Duplicate Engine
+ * MX FAST OTP - 24/7 DUAL CLOUD AUTO FORWARDER & BOT ENGINE
+ * Features:
+ * 1. 24/7 Non-stop Live OTP Stream to Group (Voltex + STS)
+ * 2. Instant /start response with WebApp & Service Buttons
+ * 3. Auto-save all bot users
+ * 4. Hourly High-Traffic Broadcast to Group AND All Bot Users
  */
 
 const http = require('http');
+const fs = require('fs');
 
 // ==========================================
 // 🚀 ১. RENDER PORT BINDING (Instant Live)
@@ -11,7 +16,7 @@ const http = require('http');
 const PORT = process.env.PORT || 10000;
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end('MX Fast OTP 24/7 Live Stream Engine Active!');
+    res.end('MX Fast OTP 24/7 Cloud Engine & Bot Active!');
 });
 
 server.listen(PORT, () => {
@@ -42,15 +47,32 @@ const CONFIG = {
     SUPPORT_URL: "https://t.me/MX_LEADER"
 };
 
-// Memory cache to prevent duplicate forwards (Max 3000 items)
+// ==========================================
+// 💾 ৩. SUBSCRIBERS & CACHE PERSISTENCE
+// ==========================================
+const SUBSCRIBERS_FILE = './subscribers.json';
+let botSubscribers = new Set();
+
+try {
+    if (fs.existsSync(SUBSCRIBERS_FILE)) {
+        const saved = JSON.parse(fs.readFileSync(SUBSCRIBERS_FILE, 'utf8'));
+        if (Array.isArray(saved)) botSubscribers = new Set(saved);
+    }
+} catch (e) {}
+
+function saveSubscribers() {
+    try {
+        fs.writeFileSync(SUBSCRIBERS_FILE, JSON.stringify([...botSubscribers]));
+    } catch (e) {}
+}
+
 const sentOtpCache = new Set();
 let lastTrafficBroadcast = Date.now();
-
-// টেলিগ্রাম কিউ (Telegram Anti-Spam Queue)
 const telegramQueue = [];
 let isQueueRunning = false;
+let lastUpdateId = 0;
 
-// Safe Symbols (Zero Font Glitch)
+// Safe Symbols
 const S_BOLT    = "\u26A1";
 const S_PHONE   = "\uD83D\uDCF1";
 const S_GLOBE   = "\uD83C\uDF0D";
@@ -66,6 +88,7 @@ const S_MONEY   = "\uD83D\uDCB0";
 const S_SPEAKER = "\uD83D\uDCE2";
 const S_SUPPORT = "\uD83D\uDC68\u200D\uD83D\uDCBB";
 const S_FIRE    = "\uD83D\uDD25";
+const S_STAR    = "\u2B50";
 const S_LINE    = "━━━━━━━━━━━━━━━━━━━━━━";
 
 const countryPrefixes = {
@@ -139,20 +162,89 @@ function escapeHTML(str) {
 }
 
 // ==========================================
-// 🚦 ৩. স্মার্ট কিউ সিস্টেম (ডুপ্লিকেট রিমুভার)
+// 🤖 ৪. TELEGRAM BOT /start COMMAND HANDLER
+// ==========================================
+async function handleBotCommands() {
+    try {
+        const res = await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}/getUpdates?offset=${lastUpdateId + 1}&timeout=20`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.ok || !Array.isArray(data.result)) return;
+
+        for (const update of data.result) {
+            lastUpdateId = update.update_id;
+            const msg = update.message;
+            if (!msg || !msg.text) continue;
+
+            const chatId = msg.chat.id;
+            const text = msg.text.trim();
+            const userName = msg.from?.first_name || "User";
+
+            // /start কমান্ড রিসিভ
+            if (text.startsWith('/start')) {
+                // ইউজার আইডি সেভ রাখা
+                if (!botSubscribers.has(chatId)) {
+                    botSubscribers.add(chatId);
+                    saveSubscribers();
+                    console.log(`[+] New user registered to bot: ${chatId} (${userName})`);
+                }
+
+                const welcomeMsg = 
+`${S_BOLT} <b>স্বাগতম ${escapeHTML(userName)} — MX FAST OTP প্যানেলে!</b> ${S_BOLT}
+${S_LINE}
+${S_SHIELD} <b>এটি দেশের সবচেয়ে দ্রুততম এবং হাই-হিটস ওটিপি সার্ভিস।</b>
+
+${S_FIRE} <b>আমাদের বিশেষ সুবিধাসমূহ:</b>
+• Voltex ও STS ডুয়াল ক্লাউড গেটওয়ে
+• প্রতি ২ সেকেন্ডে লাইভ ওটিপি রিসিভ
+• ফেসবুক ও ইনস্টাগ্রাম আনলিমিটেড ক্রিয়েশন
+• ১-ক্লিকে ইনস্ট্যান্ট নাম্বার চেঞ্জ
+• প্রতি ঘণ্টায় লাইভ হাই-ট্র্যাফিক আপডেট
+
+${S_ROCKET} <b>নিচের "⚡ ওপেন ওয়েব প্যানেল" বাটনে চাপ দিয়ে সরাসরি নাম্বার নিয়ে কাজ শুরু করুন!</b>
+${S_LINE}`;
+
+                const keyboard = [
+                    [
+                        { text: `${S_BOLT} ওপেন ওয়েব প্যানেল`, url: CONFIG.MINI_BOT_URL },
+                        { text: `${S_CART} প্রক্সি ও মেইল শপ`, url: CONFIG.SHOP_BOT_URL }
+                    ],
+                    [
+                        { text: `${S_PHONE} নাম্বার বট`, url: CONFIG.NUMBER_BOT_URL },
+                        { text: `${S_MONEY} সোশ্যাল একাউন্ট সেল`, url: CONFIG.SELL_BOT_URL }
+                    ],
+                    [
+                        { text: `${S_SPEAKER} অফিশিয়াল চ্যানেল`, url: CONFIG.CHANNEL_URL },
+                        { text: `${S_SUPPORT} এডমিন সাপোর্ট`, url: CONFIG.SUPPORT_URL }
+                    ]
+                ];
+
+                await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: chatId,
+                        text: welcomeMsg,
+                        parse_mode: "HTML",
+                        reply_markup: { inline_keyboard: keyboard }
+                    })
+                });
+            }
+        }
+    } catch (e) {}
+}
+
+// ==========================================
+// 🚦 ৫. স্মার্ট কিউ সিস্টেম (ওটিপি ডেলিভারি)
 // ==========================================
 function queueOtpForTelegram(item, otp, gateway) {
     const cleanNum = String(item.number || item.phone || item.range || "unknown").replace(/\D/g, "");
     const cleanOtp = String(otp || "").trim();
     const uniqueKey = `${cleanNum}_${cleanOtp}`;
 
-    // ডুপ্লিকেট রোধ: অলরেডি পাঠানো থাকলে বা কিউতে থাকলে সাথে সাথে ড্রপ!
-    if (sentOtpCache.has(uniqueKey)) {
-        return;
-    }
+    if (sentOtpCache.has(uniqueKey)) return;
     sentOtpCache.add(uniqueKey);
 
-    // মেমোরি কন্ট্রোল
     if (sentOtpCache.size > 3000) {
         const oldestKey = sentOtpCache.values().next().value;
         sentOtpCache.delete(oldestKey);
@@ -170,10 +262,8 @@ async function processQueue() {
         const task = telegramQueue.shift();
         try {
             await executeTelegramSend(task);
-        } catch (e) {
-            console.error("[-] Queue send error:", e.message);
-        }
-        // প্রতিটি মেসেজ পাঠানোর পর ঠিক ২.২ সেকেন্ড বিরতি (টেলিগ্রাম ব্লক প্রতিরোধ)
+        } catch (e) {}
+        // প্রতি ওটিপির মাঝে ২.২ সেকেন্ড বিরতি
         await new Promise(r => setTimeout(r, 2200));
     }
 
@@ -233,18 +323,14 @@ ${S_LINE}
         if (data.ok) {
             console.log(`[+] Sent 1 clean OTP to Telegram: ${maskedPhone} -> ${otp} (${gateway})`);
         } else if (res.status === 429) {
-            // টেলিগ্রাম রেট লিমিট দিলে একটু অপেক্ষা করবে
             const retryAfter = (data.parameters?.retry_after || 5) * 1000;
-            console.warn(`[!] Telegram 429 rate limit. Pausing queue for ${retryAfter}ms`);
             await new Promise(r => setTimeout(r, retryAfter));
         }
-    } catch (e) {
-        console.error("[-] Telegram API Error:", e.message);
-    }
+    } catch (e) {}
 }
 
 // ==========================================
-// 🔄 ৪. ১ ঘণ্টার অটোমেটিক ট্র্যাফিক নোটিশ
+// 🔄 ৬. ১ ঘণ্টার ট্র্যাফিক ব্রডকাস্ট (গ্রুপ + বটের সকল ইউজার)
 // ==========================================
 async function broadcastHourlyTraffic(topRanges) {
     let rankList = "";
@@ -267,7 +353,7 @@ ${S_LINE}
 
     const keyboard = [
         [
-            { text: `${S_BOLT} ওপেন মিনি বট প্যানেল`, url: CONFIG.MINI_BOT_URL },
+            { text: `${S_BOLT} ওপেন ওয়েব প্যানেল`, url: CONFIG.MINI_BOT_URL },
             { text: `${S_PHONE} টেলিগ্রাম নাম্বার বট`, url: CONFIG.NUMBER_BOT_URL }
         ],
         [
@@ -276,6 +362,7 @@ ${S_LINE}
         ]
     ];
 
+    // ১. গ্রুপে পাঠানো
     try {
         await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}/sendMessage`, {
             method: 'POST',
@@ -289,13 +376,29 @@ ${S_LINE}
         });
         console.log("[+] Hourly Traffic Alert Sent to Group!");
     } catch (e) {}
+
+    // ২. বটের সকল রেজিস্টার্ড ইউজারের ইনবক্সে পাঠানো
+    for (const userId of botSubscribers) {
+        try {
+            await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: userId,
+                    text: msg,
+                    parse_mode: "HTML",
+                    reply_markup: { inline_keyboard: keyboard }
+                })
+            });
+            await new Promise(r => setTimeout(r, 100)); // ছোট বিরতি যাতে স্প্যাম না হয়
+        } catch (e) {}
+    }
 }
 
 // ==========================================
-// ⚡ ৫. কনসোল + ওটিপি লাইভ স্ক্যানার
+// ⚡ ৭. কনসোল + ওটিপি লাইভ স্ক্যানার
 // ==========================================
 async function checkServer(baseUrl, token, gatewayName) {
-    // ১. কনসোলের লাইভ হিটস থেকে ওটিপি রিড (অটোমেটিক স্ট্রিম)
     try {
         const cRes = await fetch(`${baseUrl}/console?t=${Date.now()}`, {
             headers: { 'mauthapi': token },
@@ -317,7 +420,6 @@ async function checkServer(baseUrl, token, gatewayName) {
         }
     } catch (e) {}
 
-    // ২. সাকসেস ওটিপি থেকে রিড
     try {
         const res = await fetch(`${baseUrl}/success-otp?t=${Date.now()}`, {
             headers: { 'mauthapi': token },
@@ -358,24 +460,39 @@ async function updateTrafficStats() {
 
     const sorted = Object.entries(countryHits).sort((a, b) => b[1] - a[1]);
     const now = Date.now();
-    if (now - lastTrafficBroadcast >= 3600000) { // ঠিক ১ ঘণ্টা পর পর
+    if (now - lastTrafficBroadcast >= 3600000) {
         lastTrafficBroadcast = now;
         await broadcastHourlyTraffic(sorted);
     }
 }
 
 // ==========================================
-// 🚀 ৬. ইঞ্জিন শুরু
+// 🚀 ৮. ইঞ্জিন শুরু
 // ==========================================
-console.log("🚀 MX FAST OTP Live Stream Engine Started!");
+async function startAll() {
+    // আগের পুরোনো কোনো ওয়েবহুক থাকলে ডিলিট করে নেওয়া
+    try {
+        await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}/deleteWebhook`);
+    } catch (e) {}
 
-// প্রতি ২.৫ সেকেন্ডে কনসোল ও ওটিপি চেক হবে
-setInterval(async () => {
-    await checkServer(CONFIG.VOLTEX_URL, CONFIG.VOLTEX_TOKEN, `${S_BOLT} VOLTEX`);
-    await checkServer(CONFIG.STS_URL, CONFIG.STS_TOKEN, `${S_FIRE} STS`);
-}, 2500);
+    console.log("🚀 MX FAST OTP 24/7 Engine & Bot Live!");
 
-// প্রতি ১ মিনিটে ট্র্যাফিক নোটিশ কাউন্ট চেক
-setInterval(async () => {
-    await updateTrafficStats();
-}, 60000);
+    // প্রতি ২.৫ সেকেন্ডে ওটিপি স্ক্যান
+    setInterval(async () => {
+        await checkServer(CONFIG.VOLTEX_URL, CONFIG.VOLTEX_TOKEN, `${S_BOLT} VOLTEX`);
+        await checkServer(CONFIG.STS_URL, CONFIG.STS_TOKEN, `${S_FIRE} STS`);
+    }, 2500);
+
+    // প্রতি ১ মিনিটে ১ ঘণ্টার ট্র্যাফিক চেক
+    setInterval(async () => {
+        await updateTrafficStats();
+    }, 60000);
+
+    // বটের মেসেজ/কমান্ড লিসেনার লুপ (২৪ ঘণ্টা চলবে)
+    while (true) {
+        await handleBotCommands();
+        await new Promise(r => setTimeout(r, 1000));
+    }
+}
+
+startAll();
