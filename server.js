@@ -1,10 +1,6 @@
 /**
  * MX FAST OTP - 24/7 DUAL CLOUD AUTO FORWARDER & BOT ENGINE
- * Features:
- * 1. 24/7 Non-stop Live OTP Stream to Group (Voltex + STS)
- * 2. Instant /start response with WebApp & Service Buttons
- * 3. Auto-save all bot users
- * 4. Hourly High-Traffic Broadcast to Group AND All Bot Users
+ * Fresh Secure Token Edition (Zero Ads / Clean Bot)
  */
 
 const http = require('http');
@@ -24,10 +20,11 @@ server.listen(PORT, () => {
 });
 
 // ==========================================
-// ⚙️ ২. CONFIG & CREDENTIALS
+// ⚙️ ২. CONFIG & CREDENTIALS (NEW SECURE TOKEN)
 // ==========================================
 const CONFIG = {
-    TELEGRAM_BOT_TOKEN: "8858726595:AAEGt6vzteA-ALY_y4GfBWP-sz7UJ4v0K5Q",
+    // আপনার দেওয়া একদম ফ্রেশ নতুন বট টোকেন:
+    TELEGRAM_BOT_TOKEN: "8858726595:AAGEA122Fh8_eCX5Tx-Top5qAAojlWZxYuA",
     TELEGRAM_GROUP_ID: "-1004366096144",
     
     // Server 1: Voltex Cloud
@@ -88,7 +85,6 @@ const S_MONEY   = "\uD83D\uDCB0";
 const S_SPEAKER = "\uD83D\uDCE2";
 const S_SUPPORT = "\uD83D\uDC68\u200D\uD83D\uDCBB";
 const S_FIRE    = "\uD83D\uDD25";
-const S_STAR    = "\u2B50";
 const S_LINE    = "━━━━━━━━━━━━━━━━━━━━━━";
 
 const countryPrefixes = {
@@ -180,13 +176,11 @@ async function handleBotCommands() {
             const text = msg.text.trim();
             const userName = msg.from?.first_name || "User";
 
-            // /start কমান্ড রিসিভ
             if (text.startsWith('/start')) {
-                // ইউজার আইডি সেভ রাখা
                 if (!botSubscribers.has(chatId)) {
                     botSubscribers.add(chatId);
                     saveSubscribers();
-                    console.log(`[+] New user registered to bot: ${chatId} (${userName})`);
+                    console.log(`[+] New user registered: ${chatId} (${userName})`);
                 }
 
                 const welcomeMsg = 
@@ -263,7 +257,6 @@ async function processQueue() {
         try {
             await executeTelegramSend(task);
         } catch (e) {}
-        // প্রতি ওটিপির মাঝে ২.২ সেকেন্ড বিরতি
         await new Promise(r => setTimeout(r, 2200));
     }
 
@@ -321,7 +314,7 @@ ${S_LINE}
 
         let data = await res.json();
         if (data.ok) {
-            console.log(`[+] Sent 1 clean OTP to Telegram: ${maskedPhone} -> ${otp} (${gateway})`);
+            console.log(`[+] Sent OTP: ${maskedPhone} -> ${otp} (${gateway})`);
         } else if (res.status === 429) {
             const retryAfter = (data.parameters?.retry_after || 5) * 1000;
             await new Promise(r => setTimeout(r, retryAfter));
@@ -362,7 +355,6 @@ ${S_LINE}
         ]
     ];
 
-    // ১. গ্রুপে পাঠানো
     try {
         await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}/sendMessage`, {
             method: 'POST',
@@ -377,7 +369,6 @@ ${S_LINE}
         console.log("[+] Hourly Traffic Alert Sent to Group!");
     } catch (e) {}
 
-    // ২. বটের সকল রেজিস্টার্ড ইউজারের ইনবক্সে পাঠানো
     for (const userId of botSubscribers) {
         try {
             await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}/sendMessage`, {
@@ -390,7 +381,7 @@ ${S_LINE}
                     reply_markup: { inline_keyboard: keyboard }
                 })
             });
-            await new Promise(r => setTimeout(r, 100)); // ছোট বিরতি যাতে স্প্যাম না হয়
+            await new Promise(r => setTimeout(r, 100));
         } catch (e) {}
     }
 }
@@ -470,25 +461,21 @@ async function updateTrafficStats() {
 // 🚀 ৮. ইঞ্জিন শুরু
 // ==========================================
 async function startAll() {
-    // আগের পুরোনো কোনো ওয়েবহুক থাকলে ডিলিট করে নেওয়া
     try {
         await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}/deleteWebhook`);
     } catch (e) {}
 
-    console.log("🚀 MX FAST OTP 24/7 Engine & Bot Live!");
+    console.log("🚀 MX FAST OTP 24/7 Engine & Bot Live with New Token!");
 
-    // প্রতি ২.৫ সেকেন্ডে ওটিপি স্ক্যান
     setInterval(async () => {
         await checkServer(CONFIG.VOLTEX_URL, CONFIG.VOLTEX_TOKEN, `${S_BOLT} VOLTEX`);
         await checkServer(CONFIG.STS_URL, CONFIG.STS_TOKEN, `${S_FIRE} STS`);
     }, 2500);
 
-    // প্রতি ১ মিনিটে ১ ঘণ্টার ট্র্যাফিক চেক
     setInterval(async () => {
         await updateTrafficStats();
     }, 60000);
 
-    // বটের মেসেজ/কমান্ড লিসেনার লুপ (২৪ ঘণ্টা চলবে)
     while (true) {
         await handleBotCommands();
         await new Promise(r => setTimeout(r, 1000));
