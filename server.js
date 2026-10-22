@@ -1,6 +1,6 @@
 /**
  * MX FAST OTP - 24/7 DUAL CLOUD AUTO FORWARDER ENGINE
- * Ultra-Clean Safe Unicode Edition (Zero Mojibake / Font Glitch)
+ * Ultra-Stable Rate-Limited & Anti-Duplicate Edition
  */
 
 const https = require('https');
@@ -32,27 +32,27 @@ const CONFIG = {
 
 // Memory cache to prevent duplicate forwards
 const sentOtpCache = new Set();
-let lastTrafficBroadcast = 0;
+let isFirstRun = true; // স্টার্টআপে পুরোনো কোড গ্রুপে স্প্যাম হওয়া বন্ধ করার জন্য
+let lastTrafficBroadcast = Date.now();
 
-// Safe Symbols (Zero Font Glitch)
-const S_BOLT    = "\u26A1";                 // ⚡
-const S_PHONE   = "\uD83D\uDCF1";         // 📱
-const S_GLOBE   = "\uD83C\uDF0D";         // 🌍
-const S_TAG     = "\uD83C\uDFF7\uFE0F";   // 🏷️
-const S_KEY     = "\uD83D\uDD11";         // 🔑
-const S_GATEWAY = "\uD83C\uDF10";         // 🌐
-const S_CLOCK   = "\u23F0";                 // ⏰
-const S_SMS     = "\uD83D\uDCE9";         // 📩
-const S_SHIELD  = "\uD83D\uDEE1\uFE0F";   // 🛡️
-const S_ROCKET  = "\uD83D\uDE80";         // 🚀
-const S_CART    = "\uD83D\uDED2";         // 🛒
-const S_MONEY   = "\uD83D\uDCB0";         // 💰
-const S_SPEAKER = "\uD83D\uDCE2";         // 📢
-const S_SUPPORT = "\uD83D\uDC68\u200D\uD83D\uDCBB"; // 👨‍💻
-const S_FIRE    = "\uD83D\uDD25";         // 🔥
+// Safe Symbols
+const S_BOLT    = "\u26A1";
+const S_PHONE   = "\uD83D\uDCF1";
+const S_GLOBE   = "\uD83C\uDF0D";
+const S_TAG     = "\uD83C\uDFF7\uFE0F";
+const S_KEY     = "\uD83D\uDD11";
+const S_GATEWAY = "\uD83C\uDF10";
+const S_CLOCK   = "\u23F0";
+const S_SMS     = "\uD83D\uDCE9";
+const S_SHIELD  = "\uD83D\uDEE1\uFE0F";
+const S_ROCKET  = "\uD83D\uDE80";
+const S_CART    = "\uD83D\uDED2";
+const S_MONEY   = "\uD83D\uDCB0";
+const S_SPEAKER = "\uD83D\uDCE2";
+const S_SUPPORT = "\uD83D\uDC68\u200D\uD83D\uDCBB";
+const S_FIRE    = "\uD83D\uDD25";
 const S_LINE    = "━━━━━━━━━━━━━━━━━━━━━━";
 
-// Country Mapping
 const countryPrefixes = {
     "237": "Cameroon \uD83C\uDDE8\uD83C\uDDF2",
     "261": "Madagascar \uD83C\uDDF2\uD83C\uDDEC",
@@ -90,7 +90,6 @@ function getCountry(num) {
     return `Global Route ${S_GLOBE}`;
 }
 
-// 🔒 নম্বর সিকিউরড মাস্কিং
 function maskPhone(num) {
     if (!num) return "Unknown";
     let str = String(num).trim();
@@ -125,13 +124,18 @@ function escapeHTML(str) {
 }
 
 // ==========================================
-// 🚀 টেলিগ্রাম মেসেজ ডেলিভারি ইঞ্জিন
+// 🚀 টেলিগ্রাম মেসেজ ডেলিভারি (Instant Cache Lock)
 // ==========================================
 async function sendToTelegram(item, otp, gateway) {
     const cleanNum = (item.number || "unknown").replace(/\D/g, "");
     const uniqueKey = `${cleanNum}_${otp}`;
 
+    // ডুপ্লিকেট রোধ: সাথে সাথে ক্যাশে ঢুকিয়ে দেওয়া যাতে ২য় বার কল না হয়
     if (sentOtpCache.has(uniqueKey)) return;
+    sentOtpCache.add(uniqueKey);
+
+    // স্টার্টআপের সময় পুরোনো কোড টেলিগ্রামে যাবে না
+    if (isFirstRun) return;
 
     const country = getCountry(item.number);
     const maskedPhone = maskPhone(item.number);
@@ -169,7 +173,7 @@ ${S_LINE}
     ];
 
     try {
-        let res = await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -179,12 +183,7 @@ ${S_LINE}
                 reply_markup: { inline_keyboard: inlineKeyboard }
             })
         });
-
-        let data = await res.json();
-        if (data.ok) {
-            sentOtpCache.add(uniqueKey);
-            console.log(`[+] Sent cleanly to Telegram: ${maskedPhone} -> ${otp}`);
-        }
+        console.log(`[+] Sent to Telegram: ${maskedPhone} -> ${otp}`);
     } catch (e) {
         console.error("[-] Telegram Send Error:", e.message);
     }
@@ -310,19 +309,28 @@ async function updateTrafficStats() {
 
 console.log("🚀 MX FAST OTP 24/7 Cloud Server Started Successfully!");
 
-// প্রতি ২.৫ সেকেন্ডে ওটিপি চেক
-setInterval(async () => {
+// প্রথমবার সার্ভার চালু হলে পুরোনো কোডগুলো ক্যাশে ঢুকিয়ে নেবে (যাতে ডাবল স্প্যাম না হয়)
+async function startEngine() {
     await checkServer(CONFIG.VOLTEX_URL, CONFIG.VOLTEX_TOKEN, `${S_BOLT} VOLTEX`);
     await checkServer(CONFIG.STS_URL, CONFIG.STS_TOKEN, `${S_FIRE} STS`);
-}, 2500);
+    isFirstRun = false; // এরপর থেকে আসা সব কোড গ্রুপে যাবে
 
-// প্রতি ৩০ সেকেন্ডে ১ ঘণ্টার ট্র্যাফিক চেক
-setInterval(async () => {
-    await updateTrafficStats();
-}, 30000);
+    // প্রতি ৩ সেকেন্ড পর পর চেক হবে
+    setInterval(async () => {
+        await checkServer(CONFIG.VOLTEX_URL, CONFIG.VOLTEX_TOKEN, `${S_BOLT} VOLTEX`);
+        await checkServer(CONFIG.STS_URL, CONFIG.STS_TOKEN, `${S_FIRE} STS`);
+    }, 3000);
 
-// ক্লাউড পোর্ট লিসেনার (যাতে Render বন্ধ না করে)
+    // প্রতি ১ মিনিটে ট্র্যাফিক নোটিশ কাউন্ট চেক
+    setInterval(async () => {
+        await updateTrafficStats();
+    }, 60000);
+}
+
+startEngine();
+
+// ক্লাউড পোর্ট লিসেনার
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end('MX Fast OTP 24/7 Cloud Engine is 100% Active!');
-}).listen(process.env.PORT || 3000);
+    res.end('MX Fast OTP 24/7 Cloud Engine Active!');
+}).listen(process.env.PORT || 10000);
