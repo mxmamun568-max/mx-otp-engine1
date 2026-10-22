@@ -1,0 +1,326 @@
+/**
+ * MX FAST OTP - 24/7 DUAL CLOUD AUTO FORWARDER ENGINE
+ * Runs on Cloud 24/7 even when your phone is turned OFF!
+ */
+
+const https = require('https');
+
+// ==========================================
+// тЪЩя╕П [CONFIG & CREDENTIALS]
+// ==========================================
+const CONFIG = {
+    TELEGRAM_BOT_TOKEN: "8858726595:AAEGt6vzteA-ALY_y4GfBWP-sz7UJ4v0K5Q",
+    TELEGRAM_GROUP_ID: "-1004366096144",
+    
+    // Server 1: Voltex Cloud
+    VOLTEX_URL: "https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api",
+    VOLTEX_TOKEN: "MWMFJUUNQRI",
+
+    // Server 2: STS Cloud
+    STS_URL: "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api",
+    STS_TOKEN: "MSWJDU9FTB1",
+
+    // Bot & Shop Links
+    MINI_BOT_URL: "https://t.me/MXFastOTP1_Bot/panel",
+    SHOP_BOT_URL: "https://t.me/mx_premium_shop_bot",
+    NUMBER_BOT_URL: "https://t.me/MXNumberOTPBot",
+    SELL_BOT_URL: "https://t.me/MXIncomeXBot",
+    CHANNEL_URL: "https://t.me/mxearningzone",
+    SUPPORT_URL: "https://t.me/MX_LEADER"
+};
+
+// Memory cache to prevent duplicate forwards
+const sentOtpCache = new Set();
+let lastTrafficBroadcast = 0;
+
+// Country Prefix Map
+const countryPrefixes = {
+    "237": "Cameroon ЁЯЗиЁЯЗ▓", "261": "Madagascar ЁЯЗ▓ЁЯЗм", "229": "Benin ЁЯЗзЁЯЗп", "224": "Guinea ЁЯЗмЁЯЗ│",
+    "225": "Ivory Coast ЁЯЗиЁЯЗо", "374": "Armenia ЁЯЗжЁЯЗ▓", "32": "Belgium ЁЯЗзЁЯЗк", "880": "Bangladesh ЁЯЗзЁЯЗй",
+    "91": "India ЁЯЗоЁЯЗ│", "92": "Pakistan ЁЯЗ╡ЁЯЗ░", "380": "Ukraine ЁЯЗ║ЁЯЗж", "20": "Egypt ЁЯЗкЁЯЗм",
+    "234": "Nigeria ЁЯЗ│ЁЯЗм", "233": "Ghana ЁЯЗмЁЯЗн", "228": "Togo ЁЯЗ╣ЁЯЗм", "226": "Burkina Faso ЁЯЗзЁЯЗл",
+    "223": "Mali ЁЯЗ▓ЁЯЗ▒", "221": "Senegal ЁЯЗ╕ЁЯЗ│", "212": "Morocco ЁЯЗ▓ЁЯЗж", "213": "Algeria ЁЯЗйЁЯЗ┐",
+    "1": "USA/Canada ЁЯЗ║ЁЯЗ╕", "7": "Russia ЁЯЗ╖ЁЯЗ║", "44": "United Kingdom ЁЯЗмЁЯЗз"
+};
+
+const sortedPrefixes = Object.keys(countryPrefixes).sort((a, b) => b.length - a.length);
+
+function getCountry(num) {
+    if (!num) return "Global Route ЁЯМР";
+    const clean = String(num).replace(/\D/g, '');
+    for (let p of sortedPrefixes) {
+        if (clean.startsWith(p)) return countryPrefixes[p];
+    }
+    return "Global Route ЁЯМР";
+}
+
+// ЁЯФТ ржиржорзНржмрж░ ржорж╛рж╕рзНржХрж┐ржВ (ржпрж╛рждрзЗ ржЧрзНрж░рзБржкрзЗ ржХрзЗржЙ ржкрзБрж░рзЛ ржиржорзНржмрж░ ржирж╛ ржжрзЗржЦрзЗ)
+function maskPhone(num) {
+    if (!num) return "Unknown";
+    let str = String(num).trim();
+    let digits = str.replace(/\D/g, '');
+    let hasPlus = str.startsWith('+');
+    if (digits.length <= 6) return str;
+    let prefix = digits.slice(0, 5);
+    let suffix = digits.slice(-3);
+    return (hasPlus ? '+' : '') + `${prefix}***MX***${suffix}`;
+}
+
+// ржУржЯрж┐ржкрж┐ ржХрзЛржб ржмрзЗрж░ ржХрж░рж╛рж░ ржорзЗржХрж╛ржирж┐ржЬржо
+function extractOTP(sms) {
+    if (!sms) return null;
+    let m = sms.match(/\b\d{4,8}\b/);
+    if (m) return m[0];
+    let sm = sms.match(/\b\d{3}[\s-]\d{3}\b/);
+    if (sm) return sm[0].replace(/[\s-]/g, "");
+    return null;
+}
+
+function getAppDetails(sms) {
+    const s = String(sms).toLowerCase();
+    if (s.includes('facebook') || s.includes('fb')) return 'FACEBOOK';
+    if (s.includes('instagram') || s.includes('ig') || s.includes('insta')) return 'INSTAGRAM';
+    if (s.includes('whatsapp') || s.includes('wa')) return 'WHATSAPP';
+    if (s.includes('telegram') || s.includes('tg')) return 'TELEGRAM';
+    return 'SERVICE OTP';
+}
+
+function escapeHTML(str) {
+    return String(str || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// ==========================================
+// ЁЯЪА ржЯрзЗрж▓рж┐ржЧрзНрж░рж╛ржо ржорзЗрж╕рзЗржЬ ржбрзЗрж▓рж┐ржнрж╛рж░рж┐ ржЗржЮрзНржЬрж┐ржи
+// ==========================================
+async function sendToTelegram(item, otp, gateway) {
+    const cleanNum = (item.number || "unknown").replace(/\D/g, "");
+    const uniqueKey = `${cleanNum}_${otp}`;
+
+    if (sentOtpCache.has(uniqueKey)) return;
+
+    const country = getCountry(item.number);
+    const maskedPhone = maskPhone(item.number);
+    const appName = getAppDetails(item.message);
+    const timeStr = new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Dhaka', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    const htmlMsg = 
+`тЪб <b>MX FAST OTP - NEW OTP RECEIVED</b> тЪб
+тФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБ
+ЁЯУ▒ <b>Phone:</b> <code>${maskedPhone}</code>
+ЁЯМН <b>Country:</b> <b>${country}</b>
+ЁЯП╖я╕П <b>Service:</b> <b>${appName}</b>
+ЁЯФС <b>OTP Code:</b> <code>${otp}</code>
+ЁЯМР <b>Gateway:</b> <b>${gateway}</b>
+тП░ <b>Time:</b> ${timeStr}
+
+ЁЯУй <b>SMS Content:</b>
+<i>${escapeHTML(item.message || "N/A")}</i>
+тФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБ
+<i>ЁЯЫбя╕П 24/7 Verified Cloud Engine</i>`;
+
+    const plainMsg = 
+`тЪб MX FAST OTP - NEW OTP RECEIVED тЪб\n` +
+`тФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБ\n` +
+`ЁЯУ▒ Phone: ${maskedPhone}\n` +
+`ЁЯМН Country: ${country}\n` +
+`ЁЯП╖я╕П Service: ${appName}\n` +
+`ЁЯФС OTP Code: ${otp}\n` +
+`ЁЯМР Gateway: ${gateway}\n` +
+`тП░ Time: ${timeStr}\n\n` +
+`ЁЯУй SMS: ${item.message || "N/A"}\n` +
+`тФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБ\n` +
+`ЁЯЫбя╕П 24/7 Verified Cloud Engine`;
+
+    const inlineKeyboard = [
+        [
+            { text: "ЁЯЪА Open Mini Bot", url: CONFIG.MINI_BOT_URL },
+            { text: "ЁЯЫТ Proxy & Mail Shop", url: CONFIG.SHOP_BOT_URL }
+        ],
+        [
+            { text: "ЁЯУ▒ Number Bot", url: CONFIG.NUMBER_BOT_URL },
+            { text: "ЁЯТ░ Account Sell Bot", url: CONFIG.SELL_BOT_URL }
+        ],
+        [
+            { text: "ЁЯУв Official Channel", url: CONFIG.CHANNEL_URL },
+            { text: "ЁЯСитАНЁЯТ╗ Support Leader", url: CONFIG.SUPPORT_URL }
+        ]
+    ];
+
+    try {
+        // рзз. ржмрж╛ржЯржи ржУ HTML рж╕рж╣ ржкрж╛ржарж╛ржирзЛ
+        let res = await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: CONFIG.TELEGRAM_GROUP_ID,
+                text: htmlMsg,
+                parse_mode: "HTML",
+                reply_markup: { inline_keyboard: inlineKeyboard }
+            })
+        });
+
+        let data = await res.json();
+        if (data.ok) {
+            sentOtpCache.add(uniqueKey);
+            console.log(`[+] Sent to Telegram: ${maskedPhone} -> OTP: ${otp} (${gateway})`);
+            return;
+        }
+
+        // рзи. ржлрж▓ржмрзНржпрж╛ржХ: ржмрж╛ржЯржи ржУ рж╕рж╛ржзрж╛рж░ржг ржЯрзЗржХрзНрж╕ржЯ рж╕рж╣ ржкрж╛ржарж╛ржирзЛ
+        let plainRes = await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: CONFIG.TELEGRAM_GROUP_ID,
+                text: plainMsg,
+                reply_markup: { inline_keyboard: inlineKeyboard }
+            })
+        });
+        let pData = await plainRes.json();
+        if (pData.ok) {
+            sentOtpCache.add(uniqueKey);
+            console.log(`[+] Sent to Telegram (Plain): ${maskedPhone}`);
+        }
+    } catch (e) {
+        console.error("[-] Telegram Send Error:", e.message);
+    }
+}
+
+// ==========================================
+// ЁЯФД рзз ржШржгрзНржЯрж╛рж░ ржЕржЯрзЛржорзЗржЯрж┐ржХ ржЯрзНрж░рзНржпрж╛ржлрж┐ржХ ржирзЛржЯрж┐рж╢ ржмрзНрж░ржбржХрж╛рж╕рзНржЯ
+// ==========================================
+async function broadcastHourlyTraffic(topRanges) {
+    let rankList = "";
+    const medals = ["ЁЯеЗ", "ЁЯеИ", "ЁЯеЙ", "тнР", "тнР"];
+    topRanges.slice(0, 5).forEach(([country, hits], i) => {
+        rankList += `${medals[i]} <b>${i + 1}. ${country}</b> тАФ <code>${hits} Hits</code> (ЁЯФе рж╣рж╛ржЗ ржЯрзНрж░рзНржпрж╛ржлрж┐ржХ)\n`;
+    });
+
+    if (!rankList) rankList = "тАв Cameroon ржУ Guinea-рждрзЗ рж╣рж╛ржЗ ржЯрзНрж░рзНржпрж╛ржлрж┐ржХ ржЪрж▓ржЫрзЗ!";
+
+    const msg = 
+`ЁЯФе <b>MX FAST OTP - рзз ржШржгрзНржЯрж╛рж░ рж╣рж╛ржЗ ржЯрзНрж░рзНржпрж╛ржлрж┐ржХ ржПрж▓рж╛рж░рзНржЯ!</b> ЁЯФе
+тФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБ
+ЁЯУК <b>ржЧржд рзз ржШржгрзНржЯрж╛рзЯ рж╕ржмржЪрзЗрзЯрзЗ ржмрзЗрж╢рж┐ рж╣рж┐ржЯ ржЪрж▓рж╛ ржХрж╛ржирзНржЯрзНрж░рж┐:</b>
+
+${rankList}
+ЁЯЪА <b>ржкрж░рж╛ржорж░рзНрж╢:</b> ржЙржкрж░рзЗрж░ ржжрзЗрж╢ржЧрзБрж▓рзЛрждрзЗ ржПржЦржи ржЙрж░рж╛ржзрзБрж░рж╛ ржУржЯрж┐ржкрж┐ ржУ ржХрзЛржб ржЖрж╕рждрзЗржЫрзЗ! ржжрзНрж░рзБржд ржкрзНржпрж╛ржирзЗрж▓ ржмрж╛ ржмржЯ ржерзЗржХрзЗ ржирж╛ржорзНржмрж╛рж░ ржирж┐рзЯрзЗ ржХрж╛ржЬ ржХрж░рзЗ ржирж┐ржи!
+тФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБ
+<i>ЁЯЫбя╕П MX Fast OTP Automated 24/7 Cloud System</i>`;
+
+    const keyboard = [
+        [
+            { text: "тЪб ржУржкрзЗржи ржорж┐ржирж┐ ржмржЯ ржкрзНржпрж╛ржирзЗрж▓", url: CONFIG.MINI_BOT_URL },
+            { text: "ЁЯУ▒ ржЯрзЗрж▓рж┐ржЧрзНрж░рж╛ржо ржирж╛ржорзНржмрж╛рж░ ржмржЯ", url: CONFIG.NUMBER_BOT_URL }
+        ],
+        [
+            { text: "ЁЯЫТ ржкрзНрж░ржХрзНрж╕рж┐ ржУ ржорзЗржЗрж▓ рж╢ржк", url: CONFIG.SHOP_BOT_URL },
+            { text: "ЁЯТ░ рж╕рзЛрж╢рзНржпрж╛рж▓ ржПржХрж╛ржЙржирзНржЯ рж╕рзЗрж▓", url: CONFIG.SELL_BOT_URL }
+        ]
+    ];
+
+    try {
+        await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: CONFIG.TELEGRAM_GROUP_ID,
+                text: msg,
+                parse_mode: "HTML",
+                reply_markup: { inline_keyboard: keyboard }
+            })
+        });
+        console.log("[+] Hourly Traffic Alert Sent to Group!");
+    } catch (e) {}
+}
+
+// ==========================================
+// тЪб MAIN CLOUD WORKER (VOLTEX + STS)
+// ==========================================
+async function checkServer(baseUrl, token, gatewayName) {
+    try {
+        const res = await fetch(`${baseUrl}/success-otp?t=${Date.now()}`, {
+            headers: { 'mauthapi': token }
+        });
+        if (res.ok) {
+            const json = await res.json();
+            let otps = [];
+            if (json.data && Array.isArray(json.data.otps)) otps = json.data.otps;
+            else if (json.data && Array.isArray(json.data)) otps = json.data;
+            else if (Array.isArray(json.otps)) otps = json.otps;
+
+            for (let item of otps) {
+                const otp = extractOTP(item.message);
+                if (otp) {
+                    await sendToTelegram(item, otp, gatewayName);
+                }
+            }
+        }
+    } catch (e) {}
+
+    // Check /console for live real-time hits
+    try {
+        const cRes = await fetch(`${baseUrl}/console?t=${Date.now()}`, {
+            headers: { 'mauthapi': token }
+        });
+        if (cRes.ok) {
+            const cJson = await cRes.json();
+            let hits = [];
+            if (cJson.data && Array.isArray(cJson.data.hits)) hits = cJson.data.hits;
+            else if (cJson.data && Array.isArray(cJson.data)) hits = cJson.data;
+
+            for (let hit of hits) {
+                if (hit.number && hit.message) {
+                    const otp = extractOTP(hit.message);
+                    if (otp) {
+                        await sendToTelegram(hit, otp, gatewayName);
+                    }
+                }
+            }
+        }
+    } catch (e) {}
+}
+
+// Collect traffic statistics for 1-hour broadcast
+async function updateTrafficStats() {
+    let countryHits = {};
+    for (let server of [{ url: CONFIG.VOLTEX_URL, token: CONFIG.VOLTEX_TOKEN }, { url: CONFIG.STS_URL, token: CONFIG.STS_TOKEN }]) {
+        try {
+            const res = await fetch(`${server.url}/console`, { headers: { 'mauthapi': server.token } });
+            if (res.ok) {
+                const json = await res.json();
+                const hits = json.data?.hits || [];
+                for (let h of hits) {
+                    const country = getCountry(h.range || h.number);
+                    countryHits[country] = (countryHits[country] || 0) + 1;
+                }
+            }
+        } catch (e) {}
+    }
+
+    const sorted = Object.entries(countryHits).sort((a, b) => b[1] - a[1]);
+    const now = Date.now();
+    if (now - lastTrafficBroadcast >= 3600000) { // 1 hour
+        lastTrafficBroadcast = now;
+        await broadcastHourlyTraffic(sorted);
+    }
+}
+
+// ЁЯФБ рж░рж╛ржирж┐ржВ рж▓рзБржк (ржкрзНрж░рждрж┐ рзи.рзл рж╕рзЗржХрзЗржирзНржбрзЗ рж╕рзНржмрзЯржВржХрзНрж░рж┐рзЯржнрж╛ржмрзЗ ржХрзНрж▓рж╛ржЙржбрзЗ ржЪрж▓ржмрзЗ)
+console.log("ЁЯЪА MX FAST OTP 24/7 Cloud Server Started Successfully!");
+
+setInterval(async () => {
+    await checkServer(CONFIG.VOLTEX_URL, CONFIG.VOLTEX_TOKEN, "тЪб VOLTEX");
+    await checkServer(CONFIG.STS_URL, CONFIG.STS_TOKEN, "ЁЯФе STS");
+}, 2500);
+
+setInterval(async () => {
+    await updateTrafficStats();
+}, 30000);
+
+// Basic HTTP server so cloud hosts don't terminate the process
+const http = require('http');
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('MX Fast OTP 24/7 Cloud Background Engine is Active!');
+}).listen(process.env.PORT || 3000);
